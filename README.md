@@ -77,3 +77,34 @@ JSON output fields: `title`, `url`, `company`, `location`, `contract_type`, `sal
    ```
 
 The schema is idempotent and can be reapplied safely.
+
+
+## Ingestion pipeline
+
+The ingestion CLI reads JSON input(s), normalizes records into a canonical `JobCandidate`, enriches fields, and writes idempotently into PostgreSQL (`jobs` + `job_sources`).
+
+Run:
+```bash
+python -m jobs.ingest --input outputs/json/apec_20260220_162234.json --source apec
+# or
+python -m jobs.ingest --input outputs/json --source apec
+```
+
+Environment variable required:
+- `DATABASE_URL` (example: `postgresql://botravail_user:change_me@localhost:5432/botravail`)
+
+You can bootstrap local env vars from the provided template:
+```bash
+cp .env.example .env
+```
+`jobs.ingest` automatically loads `.env` (via `python-dotenv`), so exporting `DATABASE_URL` manually is optional.
+
+Normalization/enrichment includes:
+- description cleanup (boilerplate removal + whitespace normalization)
+- salary min/max extraction in EUR
+- remote type detection (`full_remote` / `hybrid` / `onsite`)
+- publication date parsing from text like `Publiée le 17/02/2026`
+- technology extraction from synonym mapping
+- `english_required` detection from language keywords
+- `canonical_hash = sha256(title + company + description_clean)`
+- tolerant JSON loader repairs common invalid escape sequences from scraped text before parsing
