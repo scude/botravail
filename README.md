@@ -78,10 +78,21 @@ JSON output fields: `title`, `url`, `company`, `location`, `contract_type`, `sal
 
 The schema is idempotent and can be reapplied safely.
 
+## Migrations
+
+For an existing database, apply SQL migrations in order:
+
+```bash
+psql "postgresql://botravail_user:change_me@localhost:5432/botravail" -f migrations/001_add_salary_columns_to_jobs.sql
+```
+
+Migration naming uses an incremental prefix (`001_`, `002_`, ...).
+
+`001_add_salary_columns_to_jobs.sql` adds `jobs.salary_min_eur` and `jobs.salary_max_eur` without requiring a full reset.
 
 ## Ingestion pipeline
 
-The ingestion CLI reads JSON input(s), normalizes records into a canonical `JobCandidate`, enriches fields, and writes idempotently into PostgreSQL (`jobs` + `job_sources`).
+The ingestion CLI reads JSON input(s), normalizes records into a canonical `JobCandidate`, enriches fields, and writes idempotently into PostgreSQL (`jobs` + `job_sources`). Salary ranges are persisted both on `jobs.salary_min_eur` / `jobs.salary_max_eur` and inside `job_scores.score_breakdown`.
 
 Run:
 ```bash

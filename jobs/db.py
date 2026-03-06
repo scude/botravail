@@ -69,19 +69,23 @@ def upsert_job(conn: psycopg.Connection, candidate: JobCandidate) -> bool:
                     title,
                     company,
                     location,
+                    salary_min_eur,
+                    salary_max_eur,
                     remote_type,
                     description_clean,
                     content_hash,
                     canonical_url,
                     last_seen_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, now())
                 RETURNING id
                 """,
                 (
                     candidate.title,
                     candidate.company,
                     candidate.location,
+                    candidate.salary_min_eur,
+                    candidate.salary_max_eur,
                     "on_site" if candidate.remote_type == "onsite" else candidate.remote_type,
                     candidate.description_clean,
                     candidate.canonical_hash,
@@ -102,6 +106,8 @@ def upsert_job(conn: psycopg.Connection, candidate: JobCandidate) -> bool:
                     title = %s,
                     company = %s,
                     location = %s,
+                    salary_min_eur = %s,
+                    salary_max_eur = %s,
                     remote_type = %s,
                     description_clean = %s,
                     content_hash = %s,
@@ -113,6 +119,8 @@ def upsert_job(conn: psycopg.Connection, candidate: JobCandidate) -> bool:
                     candidate.title,
                     candidate.company,
                     candidate.location,
+                    candidate.salary_min_eur,
+                    candidate.salary_max_eur,
                     "on_site" if candidate.remote_type == "onsite" else candidate.remote_type,
                     candidate.description_clean,
                     candidate.canonical_hash,

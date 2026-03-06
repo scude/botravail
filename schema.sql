@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     title text NOT NULL,
     company text,
     location text,
+    salary_min_eur integer,
+    salary_max_eur integer,
     remote_type text NOT NULL DEFAULT 'unknown',
     description_clean text NOT NULL,
     content_hash text NOT NULL,
