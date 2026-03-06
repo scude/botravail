@@ -34,45 +34,92 @@ def get_connection() -> psycopg.Connection:
 
 
 def upsert_job(conn: psycopg.Connection, candidate: JobCandidate) -> bool:
+    normalized_url = candidate.source_url.strip()
+    canonical_url = normalized_url or None
+
     with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO jobs (
-                title,
-                company,
-                location,
-                remote_type,
-                description_clean,
-                content_hash,
-                canonical_url,
-                last_seen_at
+        if canonical_url is None:
+            cur.execute(
+                """
+                SELECT id
+                FROM jobs
+                WHERE content_hash = %s
+                LIMIT 1
+                """,
+                (candidate.canonical_hash,),
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, now())
-            ON CONFLICT (content_hash)
-            DO UPDATE SET
-                title = EXCLUDED.title,
-                company = EXCLUDED.company,
-                location = EXCLUDED.location,
-                remote_type = EXCLUDED.remote_type,
-                description_clean = EXCLUDED.description_clean,
-                canonical_url = EXCLUDED.canonical_url,
-                last_seen_at = now()
-            RETURNING id, (xmax = 0) AS inserted
-            """,
-            (
-                candidate.title,
-                candidate.company,
-                candidate.location,
-                "on_site" if candidate.remote_type == "onsite" else candidate.remote_type,
-                candidate.description_clean,
-                candidate.canonical_hash,
-                candidate.source_url,
-            ),
-        )
-        row = cur.fetchone()
-        if row is None:
-            raise RuntimeError("Upsert jobs query did not return a row")
-        job_id, inserted = row
+        else:
+            cur.execute(
+                """
+                SELECT id
+                FROM jobs
+                WHERE content_hash = %s
+                   OR canonical_url = %s
+                LIMIT 1
+                """,
+                (candidate.canonical_hash, canonical_url),
+            )
+        existing = cur.fetchone()
+
+        inserted = False
+        if existing is None:
+            cur.execute(
+                """
+                INSERT INTO jobs (
+                    title,
+                    company,
+                    location,
+                    remote_type,
+                    description_clean,
+                    content_hash,
+                    canonical_url,
+                    last_seen_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+                RETURNING id
+                """,
+                (
+                    candidate.title,
+                    candidate.company,
+                    candidate.location,
+                    "on_site" if candidate.remote_type == "onsite" else candidate.remote_type,
+                    candidate.description_clean,
+                    candidate.canonical_hash,
+                    canonical_url,
+                ),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise RuntimeError("Insert jobs query did not return a row")
+            job_id = row[0]
+            inserted = True
+        else:
+            job_id = existing[0]
+            cur.execute(
+                """
+                UPDATE jobs
+                SET
+                    title = %s,
+                    company = %s,
+                    location = %s,
+                    remote_type = %s,
+                    description_clean = %s,
+                    content_hash = %s,
+                    canonical_url = %s,
+                    last_seen_at = now()
+                WHERE id = %s
+                """,
+                (
+                    candidate.title,
+                    candidate.company,
+                    candidate.location,
+                    "on_site" if candidate.remote_type == "onsite" else candidate.remote_type,
+                    candidate.description_clean,
+                    candidate.canonical_hash,
+                    canonical_url,
+                    job_id,
+                ),
+            )
 
         cur.execute(
             """
@@ -95,7 +142,7 @@ def upsert_job(conn: psycopg.Connection, candidate: JobCandidate) -> bool:
             (
                 job_id,
                 candidate.source_name,
-                candidate.source_url,
+                normalized_url,
                 candidate.raw_path,
                 candidate.source_posted_at,
             ),
@@ -130,7 +177,8 @@ def ingest_candidates(candidates: list[JobCandidate]) -> IngestStats:
     with get_connection() as conn:
         for candidate in candidates:
             try:
-                inserted = upsert_job(conn, candidate)
+                with conn.transaction():
+                    inserted = upsert_job(conn, candidate)
                 if inserted:
                     stats.inserted += 1
                 else:
@@ -138,5 +186,4 @@ def ingest_candidates(candidates: list[JobCandidate]) -> IngestStats:
             except Exception:
                 LOGGER.exception("Failed to ingest offer from %s", candidate.raw_path)
                 stats.errors += 1
-        conn.commit()
     return stats
